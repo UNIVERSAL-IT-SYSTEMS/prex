@@ -90,7 +90,8 @@ device		rtc		# Logical RTC
 device		mc146818	# MC146818 Real time clock
 device		null		# NULL device
 device		zero		# Zero device
-device		ramdisk		# RAM disk
+#device		ramdisk		# RAM disk
+device      cromdisk    # Compressed ROM disk
 #device		fdd		# Floppy disk drive
 
 #

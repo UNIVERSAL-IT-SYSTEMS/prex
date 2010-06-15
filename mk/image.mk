@@ -12,10 +12,21 @@ include $(SRCDIR)/conf/etc/files.mk
 include $(SRCDIR)/mk/common.mk
 -include $(SRCDIR)/bsp/boot/$(ARCH)/$(PLATFORM)/Makefile.sysgen
 
-$(TARGET): dummy
+$(SRCDIR)/tools/mkcromdisk: $(SRCDIR)/tools/mkcromdisk.c
+	cc -o $@ $< -lz
+	
+ifdef CONFIG_CROMDISK
+$(TARGET): $(SRCDIR)/tools/mkcromdisk
+else
+$(TARGET):
+endif
 	$(call echo-file,PACK   ,$@)
 ifdef FILES
 	$(AR) rcS bootdisk.a $(FILES)
+ifdef CONFIG_CROMDISK
+	$(SRCDIR)/tools/mkcromdisk bootdisk.a bootdisk.crom
+	$(MV) bootdisk.crom bootdisk.a
+endif
 	$(AR) rcS tmp.a $(KERNEL) $(DRIVER) $(TASKS) bootdisk.a
 	$(RM) bootdisk.a
 else
