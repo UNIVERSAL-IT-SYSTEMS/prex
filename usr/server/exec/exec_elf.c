@@ -116,13 +116,22 @@ relocate_section_rela(Elf32_Sym *sym_table, Elf32_Rela *rela,
 
 	for (i = 0; i < nr_reloc; i++) {
 		sym = &sym_table[ELF32_R_SYM(rela->r_info)];
-		if (sym->st_shndx != STN_UNDEF) {
-			sym_val = (Elf32_Addr)sect_addr[sym->st_shndx]
-				+ sym->st_value;
+		DPRINTF(("#%d rela offset=%08x value=%08x shndx=%08x addend=%08x\n",
+				i,
+				rela->r_offset,
+				sym->st_value,
+				sym->st_shndx,
+				rela->r_addend));
+
+		if (ELF32_ST_BIND(sym->st_info) == STB_WEAK)
+			DPRINTF(("undefined weak symbol for rela[%d]\n", i));
+		else
+		{
+			sym_val = sym->st_value;
+			if (sym->st_shndx != STN_UNDEF)
+				sym_val += (Elf32_Addr)sect_addr[sym->st_shndx];
 			if (relocate_rela(rela, sym_val, target_sect) != 0)
 				return -1;
-		} else if (ELF32_ST_BIND(sym->st_info) == STB_WEAK) {
-			DPRINTF(("undefined weak symbol for rela[%d]\n", i));
 		}
 		rela++;
 	}
@@ -139,6 +148,10 @@ relocate_section_rel(Elf32_Sym *sym_table, Elf32_Rel *rel,
 
 	for (i = 0; i < nr_reloc; i++) {
 		sym = &sym_table[ELF32_R_SYM(rel->r_info)];
+		DPRINTF(("rel offset=%08x value=%08x shndx=%08x\n",
+				rel->r_offset,
+				sym->st_value,
+				sym->st_shndx));
 		if (sym->st_shndx != STN_UNDEF) {
 			sym_val = (Elf32_Addr)sect_addr[sym->st_shndx]
 				+ sym->st_value;
