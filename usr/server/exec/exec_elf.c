@@ -148,10 +148,10 @@ relocate_section_rel(Elf32_Sym *sym_table, Elf32_Rel *rel,
 
 	for (i = 0; i < nr_reloc; i++) {
 		sym = &sym_table[ELF32_R_SYM(rel->r_info)];
-		dprintf("rel offset=%08x value=%08x shndx=%08x\n",
+		DPRINTF(("rel offset=%08x value=%08x shndx=%08x\n",
 				rel->r_offset,
 				sym->st_value,
-				sym->st_shndx);
+				sym->st_shndx));
 		if (sym->st_shndx != STN_UNDEF) {
 			sym_val = (Elf32_Addr)sect_addr[sym->st_shndx]
 				+ sym->st_value;
