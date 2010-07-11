@@ -9,6 +9,8 @@
 #include "mips/systrap.h"
 #elif defined (__sh__)
 #include "sh/systrap.h"
+#elif defined (__h8300s__)
+#include "h8300s/systrap.h"
 #else
 #error architecture not supported
 #endif

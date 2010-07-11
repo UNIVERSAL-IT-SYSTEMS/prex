@@ -9,6 +9,8 @@
 #include "mips/signal.h"
 #elif defined (__sh__)
 #include "sh/signal.h"
+#elif defined (__h8300s__)
+#include "h8300s/signal.h"
 #else
 #error architecture not supported
 #endif

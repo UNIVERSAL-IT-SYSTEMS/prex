@@ -9,6 +9,8 @@
 #include "mips/syspage.h"
 #elif defined (__sh__)
 #include "sh/syspage.h"
+#elif defined (__h8300s__)
+#include "h8300s/syspage.h"
 #else
 #error architecture not supported
 #endif

@@ -9,6 +9,8 @@
 #include "mips/setjmp.h"
 #elif defined (__sh__)
 #include "sh/setjmp.h"
+#elif defined (__h8300s__)
+#include "h8300s/setjmp.h"
 #else
 #error architecture not supported
 #endif
