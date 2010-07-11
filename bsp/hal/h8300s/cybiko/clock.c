@@ -66,7 +66,6 @@
 
 /*
  * Clock interrupt service routine.
- * No H/W reprogram is required.
  */
 static int clock_isr(void *arg)
 {
@@ -82,27 +81,20 @@ static int clock_isr(void *arg)
  * Initialize clock H/W chip.
  * Setup clock tick rate and install clock ISR.
  */
-void
-clock_init(void)
+void clock_init(void)
 {
 	int x;
 
 	/* Install ISR. */
 
-	DPRINTF(("Disabling old timer\n"));
-
 	x = splhigh();
 	REG8(TCR0) = 0;
 	splx(x);
-
-	DPRINTF(("Installing timer ISR\n"));
 
 	irq_attach(INTERRUPT_OVI0, IPL_CLOCK, 0, &clock_isr,
 			IST_NONE, NULL);
 
 	/* Initialise 8-bit timer 0. */
-
-	DPRINTF(("Programming timer\n"));
 
 	x = splhigh();
 	REG16(MSTPCR) &= ~MSTPCR_MSTP12;
@@ -111,5 +103,4 @@ clock_init(void)
 	splx(x);
 
 	DPRINTF(("Clock rate: %d ticks/sec\n", CONFIG_HZ));
-
 }
