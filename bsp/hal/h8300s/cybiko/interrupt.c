@@ -38,73 +38,10 @@
 
 #define REG8(x) (*(volatile uint8_t*)(x))
 #define REG16(x) (*(volatile uint16_t*)(x))
+#define REG32(x) (*(volatile uint32_t*)(x))
 
-/*
- * Interrupt Priority Level
- *
- * Each interrupt has its logical priority level, with 0 being
- * the lowest priority. While some ISR is running, all lower
- * priority interrupts are masked off.
- */
-volatile int irq_level;
-
-/* The mapping describing which bits of the ICR register correspond to which
- * interrupt number. It just so happens that no ICR bit 0 is used, so we use
- * 0 to identify an interrupt with no ICR bit.
- *
- * The top nibble indicates which ICR register, the bottom is the bit number.
- */
-struct icr_descriptor
-{
-	unsigned reg : 4;
-	unsigned bit : 4;
-} __attribute__ ((packed));
-
-static const struct icr_descriptor icr_table[] =
-{
-	[INTERRUPT_IRQ0] = {0, 7},
-	[INTERRUPT_IRQ1] = {0, 6},
-	[INTERRUPT_IRQ2] = {0, 5},
-	[INTERRUPT_IRQ3] = {0, 5},
-	[INTERRUPT_IRQ4] = {0, 4},
-	[INTERRUPT_IRQ5] = {0, 4},
-	[INTERRUPT_IRQ6] = {0, 3},
-	[INTERRUPT_IRQ7] = {0, 3},
-	[INTERRUPT_SWDTEND] = {0, 2},
-	[INTERRUPT_WOVI] = {0, 1},
-	[INTERRUPT_ADI] = {1, 6},
-	[INTERRUPT_TGI0A] = {1, 5},
-	[INTERRUPT_TGI0B] = {1, 5},
-	[INTERRUPT_TGI0C] = {1, 5},
-	[INTERRUPT_TGI0D] = {1, 5},
-	[INTERRUPT_TGI0V] = {1, 5},
-	[INTERRUPT_TGI1A] = {1, 4},
-	[INTERRUPT_TGI1B] = {1, 4},
-	[INTERRUPT_TGI1V] = {1, 4},
-	[INTERRUPT_TGI1U] = {1, 4},
-	[INTERRUPT_TGI2A] = {1, 3},
-	[INTERRUPT_TGI2B] = {1, 3},
-	[INTERRUPT_TGI2V] = {1, 3},
-	[INTERRUPT_TGI2U] = {1, 3},
-	[INTERRUPT_CMIA0] = {2, 7},
-	[INTERRUPT_CMIB0] = {2, 7},
-	[INTERRUPT_OVI0] = {2, 7},
-	[INTERRUPT_CMIA1] = {2, 6},
-	[INTERRUPT_CMIB1] = {2, 6},
-	[INTERRUPT_OVI1] = {2, 6},
-	[INTERRUPT_ERI0] = {2, 4},
-	[INTERRUPT_RXI0] = {2, 4},
-	[INTERRUPT_TXI0] = {2, 4},
-	[INTERRUPT_TEI0] = {2, 4},
-	[INTERRUPT_ERI1] = {2, 3},
-	[INTERRUPT_RXI1] = {2, 3},
-	[INTERRUPT_TXI1] = {2, 3},
-	[INTERRUPT_TEI1] = {2, 3},
-	[INTERRUPT_ERI2] = {2, 2},
-	[INTERRUPT_RXI2] = {2, 2},
-	[INTERRUPT_TXI2] = {2, 2},
-	[INTERRUPT_TEI2] = {2, 2}
-};
+/* Low-level interrupt handler --- do not call directly! */
+extern void interrupt_entry(void);
 
 /* This mapping converts from Cybiko boot routine numbers to H8300S interrupt
  * vectors.
@@ -160,48 +97,12 @@ static const u_char cybiko_to_h8300s[] =
 		sizeof(*cybiko_to_h8300s))
 
 /*
- * Interrupt mapping table
- */
-static uint8_t ipl_table[NIRQS];		/* vector -> level */
-static uint8_t enable_table[NIPLS][3];	/* level -> mask */
-
-/*
- * Enable appropriate interrupts for the current level
- */
-static void update_icr(void)
-{
-	uint8_t* p = enable_table[irq_level];
-	REG8(ICU_ICRA) = p[0];
-	REG8(ICU_ICRB) = p[1];
-	REG8(ICU_ICRC) = p[2];
-}
-
-/*
  * Unmask interrupt in ICU for specified irq.
  * The interrupt mask table is also updated.
  * Assumes CPU interrupt is disabled in caller.
  */
 void interrupt_unmask(int vector, int level)
 {
-	const struct icr_descriptor* p = &icr_table[vector];
-	uint8_t reg = p->reg;
-	uint8_t bit = p->bit;
-
-	if (!bit)
-		return;
-
-	uint8_t mask = 1 << bit;
-
-	/* Save level mapping */
-	ipl_table[vector] = level;
-
-	/*
-	 * Unmask the target interrupt for all
-	 * lower interrupt levels.
-	 */
-	for (uint8_t i = 0; i < level; i++)
-		enable_table[i][reg] |= mask;
-	update_icr();
 }
 
 /*
@@ -210,36 +111,37 @@ void interrupt_unmask(int vector, int level)
  */
 void interrupt_mask(int vector)
 {
-	const struct icr_descriptor* p = &icr_table[vector];
-	uint8_t reg = p->reg;
-	uint8_t bit = p->bit;
-
-	if (!bit)
-		return;
-
-	uint8_t mask = ~(1 << bit);
-
-	int s = splhigh();
-	{
-		uint8_t level = ipl_table[vector];
-		for (uint8_t i = 0; i < level; i++)
-			enable_table[i][reg] &= mask;
-		ipl_table[vector] = IPL_NONE;
-		update_icr();
-	}
-	splx(s);
 }
 
 /*
  * Setup interrupt mode.
  * Select whether an interrupt trigger is edge or level.
  */
-void
-interrupt_setup(int vector, int mode)
+void interrupt_setup(int vector, int mode)
 {
-	REG16(ICU_ISCR) = REG16(ICU_ISCR)
-			        & ~(3 << (vector*2))
-	                | (mode << (vector*2));
+	/* For IRQ0 to IRQ7 only, set edge/level sensitivity. */
+
+	if ((vector >= INTERRUPT_IRQ0) && (vector <= INTERRUPT_IRQ7))
+	{
+		int irq = vector - INTERRUPT_IRQ0;
+		REG16(ICU_ISCR) = REG16(ICU_ISCR)
+						& ~(3 << (irq*2))
+						| (mode << (irq*2));
+	}
+
+	/* We need to override the entry in the Cybiko boot ROM's vector table
+	 * to point at our ISR, not the boot ROM's. Unfortunately this table is
+	 * not arranged in any sensible order.
+	 */
+
+	uint32_t cybikoisr = REG32(vector * 4);
+	if (cybikoisr && (REG32(cybikoisr + 8) == 0x01006b02))
+	{
+		uint32_t bootvector = REG16(cybikoisr + 12);
+		bootvector |= 0x00ff0000;
+
+		REG32(bootvector) = (uint32_t) &interrupt_entry;
+	}
 }
 
 /*
@@ -253,24 +155,13 @@ void interrupt_handler(int vector)
 		return;
 	vector = cybiko_to_h8300s[vector];
 
-	/* Adjust interrupt level */
+	/* Dispatch interrupt.
+	 *
+	 * Note! Unlike most other platforms, this is done with interrupts *off*.
+	 * As the H8300S has no global interrupt enable register we can't do IPLs.
+	 */
 
-	old_ipl = irq_level;
-	new_ipl = ipl_table[vector];
-	if (new_ipl > old_ipl)		/* Ignore spurious interrupt */
-		irq_level = new_ipl;
-	update_icr();
-
-	/* Dispatch interrupt */
-
-	splon();
 	irq_handler(vector);
-	sploff();
-
-	/* Restore interrupt level */
-
-	irq_level = old_ipl;
-	update_icr();
 }
 
 /*
@@ -280,16 +171,6 @@ void interrupt_handler(int vector)
 void
 interrupt_init(void)
 {
-	int i;
-
-	irq_level = IPL_NONE;
-
-	for (i = 0; i < NIRQS; i++)
-		ipl_table[i] = IPL_NONE;
-
-	for (i = 0; i < NIPLS; i++)
-		enable_table[i][0] = 0;
-
 	REG8(ICU_SYSCR) = 0x01; /* interrupts controlled with I bit */
 	REG8(ICU_IER) = 0; /* disable all hardware interrupts */
 }

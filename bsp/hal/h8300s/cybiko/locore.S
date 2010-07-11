@@ -37,21 +37,10 @@
 /* This is called by the boot loader to start the Prex kernel. */
 
 proc _kernel_start
-	/* Change the Cybiko boot ROM's interrupt vectors to point to
-	 * our interrupt entry point. */
-
-	mov #_interrupt_entry, er0
-	mov #VECTOR_IRQ0, er1
-	mov #VECTOR_TEI2+4, er2
-1:
-	mov er0, @er1
-	adds #4, er1
-	cmp er1, er2
-	bne 1b
-
 	mov #current_kernel_stack, er0
 	mov sp, @er0                       // save kernel stack
 	bset #7, @er0                      // top bit means we're in kernel mode
+	bset #3, @0x61:8                   // turn green LED on
 
 	jmp _main
 
@@ -60,7 +49,7 @@ proc _kernel_start
  * This has to do the following:
  *
  * - switch to kernel mode.
- * - save the user mode registers into the correct context->uregs structure.
+ * - save the user mode registers into the current context->uregs structure.
  * - perform the system call.
  * - switch back out of kernel mode and restore the user mode registers.
  *
@@ -97,7 +86,7 @@ proc _syscall_entry
 
 	mov er5, sp                        // switch stacks
 	bset #7, @current_kernel_stack     // mark ourselves as in kernel mode
-	andc #IRQ_FLAGS, ccr               // interrupts on
+	andc #IRQ_MASK, ccr                // interrupts on
 
 	/* Do system call. */
 
@@ -115,8 +104,8 @@ proc _syscall_entry
 	bclr #7, @current_kernel_stack     // not in kernel mode any more
 	mov @(0x28, sp), er5               // fetch user PC
 	mov @(0x1c, sp), sp                // restore user stack
-	andc #IRQ_FLAGS, ccr               // interrupts on
 
+	andc #IRQ_MASK, ccr                // interrupts on
 	jmp @er5
 
 /* Used to start threads --- nothing to do with system calls.
@@ -143,10 +132,10 @@ proc _syscall_ret
 	mov @(0x1c, sp), er0               // new stack pointer
 	mov @(0x28, sp), er1               // new pc
 	mov er1, @-er0                     // push new pc onto new stack
-	mov @(0x24, sp), er1               // new ccr
-	mov er1, @-er0                     // push new ccr onto new stack
-	mov @(0x20, sp), er1               // new exr
-	mov er1, @-er0                     // push new exr onto new stack
+//	mov @(0x24, sp), er1               // new ccr
+//	mov er1, @-er0                     // push new ccr onto new stack
+//	mov @(0x20, sp), er1               // new exr
+//	mov er1, @-er0                     // push new exr onto new stack
 
 	mov @(0x00, sp), er0               // restore registers
 	mov @(0x04, sp), er1
@@ -156,8 +145,12 @@ proc _syscall_ret
 	mov @(0x14, sp), er5
 	mov @(0x18, sp), er6
 	mov @(0x1c, sp), sp
-	sub #12, sp
-	rte                                // atomically pop new ccr and pc
+
+	sub #4, sp
+	andc #IRQ_MASK, ccr
+	rts
+//	sub #12, sp
+//	rte                                // atomically pop new ccr and pc
 
 /* Entry point for kernel thread */
 proc _kernel_thread_entry
@@ -186,7 +179,7 @@ proc _kernel_thread_entry
  * handler is 26 bytes apart, so it's not too hard.
  */
 proc _interrupt_entry
-	rts
+	bset #3, @0x61:8                   // turn green LED on
 	mov @sp, er1                       // get return address
 	sub #0x113c, er1
 	mov #26, r0l
@@ -211,7 +204,10 @@ proc _interrupt_entry
 	bne nested_interrupt               // no; go to simplified handler
 
 	jsr _interrupt_handler
-	// timeslicing and signal processing code goes here
+
+	jsr _splon
+	jsr _sched_yield                   // try to preempt
+	jsr _sploff
 
 interrupt_ret:
 	mov er4, sp                        // restore old stack
@@ -227,6 +223,14 @@ nested_interrupt:
 	bra interrupt_ret
 
 .lcomm irq_nesting, 1
+
+/* Idle the CPU until the next interrupt.
+ */
+
+proc _cpu_idle
+	bclr #3, @0x61:8 /* turn green LED off */
+	sleep
+	rts
 
 proc __cybiko_putc
 	stm.l er2-er3, @-er7

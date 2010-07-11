@@ -44,8 +44,8 @@
 #define CCR_APP_MODE 0
 #define EXR_APP_MODE 0
 
-#define IRQ_MASK (~(CCR_I|CCR_UI) & 0xff)
-#define IRQ_FLAGS (CCR_I|CCR_UI)
+#define IRQ_MASK (~CCR_I & 0xff)
+#define IRQ_FLAGS CCR_I
 
 /* Extended control register */
 

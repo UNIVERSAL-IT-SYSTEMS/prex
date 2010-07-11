@@ -35,19 +35,50 @@
 #include <machine/asm.h>
 #include <cpu.h>
 
-proc _cpu_idle
-	sleep
+/* Disable interrupts, and return the old interrupt state.
+ *
+ * Returns:
+ *
+ *   er0 = 0 if interrupts were on, 15 if not
+ */
+
+.global _sploff
+proc _splhigh
+	sub er0, er0
+	stc ccr, r0l
+	and #IRQ_FLAGS, r0l
+	beq 1f
+
+	/* Interrupts were off. */
+	mov #15, r0l
 	rts
 
-/* Enable all interrupts. */
-proc _splon
+1:
+	/* Interrupts were on. */
+	mov #0, r0l
+_sploff:
+	orc.b #IRQ_FLAGS, ccr
+	rts
+
+/* Unconditionally enable interrupts. */
+
+.global _splon
+proc _spl0
+_splon:
 	andc.b #IRQ_MASK, ccr
 	rts
 
-/* Disable all interrupts. */
-proc _sploff
-	orc #IRQ_FLAGS, ccr
-	rts
+/* Restore interrupts to previous state.
+ *
+ * Inputs:
+ *
+ *   er0 = 0 to enable interrupts, 15 to disable
+ */
+
+proc _splx
+	cmp #15, r0l
+	bne _spl0
+	jmp _sploff
 
 /*
  * Switch register context.
