@@ -68,7 +68,12 @@
 #define MAXEVTNAME	12		/* max event name */
 
 #define HZ		CONFIG_HZ	/* ticks per second */
+#if defined CONFIG_MAXIRQS
+#define MAXIRQS CONFIG_MAXIRQS
+#else
 #define MAXIRQS		32		/* max number of irq line */
+#endif
+
 #define	PASSWORD_LEN	4		/* fixed length, not counting NULL */
 
 /*
