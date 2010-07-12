@@ -39,7 +39,7 @@
 #define REG8(x) (*(volatile uint8_t*)(x))
 #define REG16(x) (*(volatile uint16_t*)(x))
 
-#define IRQMASK (SCR_TIE | SCR_RIE)
+#define IRQMASK (SCR_RIE | SCR_TIE)
 
 /* Forward functions */
 static int	h8300serial_init(struct driver *);
@@ -82,15 +82,22 @@ static void h8300serial_xmt_char(struct serial_port *sp, char c)
 
 	for (;;)
 	{
+		int s = splhigh();
+
 		ssr = REG8(SCI2 + SSR);
 		if (ssr & SSR_TDRE)
-			break;
+		{
+			/* Write byte to transmit register. */
+
+			REG8(SCI2 + TDR) = c;
+			REG8(SCI2 + SSR) = ssr & ~SSR_TDRE;
+			splx(s);
+			return;
+		}
+
+		splx(s);
 	}
 
-	/* Write byte to transmit register. */
-
-	REG8(SCI2 + TDR) = c;
-	REG8(SCI2 + SSR) = ssr & ~SSR_TDRE;
 }
 
 /* Polled receive (for debug purposes only). */
@@ -104,17 +111,21 @@ static char h8300serial_rcv_char(struct serial_port *sp)
 
 	for (;;)
 	{
+		int s = splhigh();
+
 		ssr = REG8(SCI2 + SSR);
 		if (ssr & SSR_RDRF)
-			break;
+		{
+			/* Read byte. */
+
+			data = REG8(SCI2 + RDR);
+			REG8(SCI2 + SSR) = ssr & ~SSR_RDRF;
+			splx(s);
+			return data;
+		}
+
+		splx(s);
 	}
-
-	/* Read byte. */
-
-	data = REG8(SCI2 + RDR);
-	REG8(SCI2 + SSR) = ssr & ~SSR_RDRF;
-
-	return data;
 }
 
 static void h8300serial_set_poll(struct serial_port *sp, int on)
@@ -164,8 +175,21 @@ static int rxi_isr(void* arg)
 static int txi_isr(void* arg)
 {
 	struct serial_port* sp = arg;
+	uint8_t ssr;
+	int s;
 
-	serial_xmt_done(sp);
+	s = splhigh();
+	ssr = REG8(SCI2 + SSR);
+	if (ssr & SSR_TDRE)
+	{
+		/* Only report transmission complete if it's actually done so ---
+		 * this provides some bullet-proofing against stray interrupts.
+		 */
+		serial_xmt_done(sp);
+		REG8(SCI2 + SSR) = ssr & ~SSR_TDRE;
+	}
+	splx(s);
+
 	return 0;
 }
 
