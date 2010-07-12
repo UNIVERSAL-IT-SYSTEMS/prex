@@ -180,6 +180,8 @@ proc _kernel_thread_entry
  */
 proc _interrupt_entry
 	bset #3, @0x61:8                   // turn green LED on
+	mov sp, er4                        // save stack pointer
+
 	mov @sp, er1                       // get return address
 	sub #0x113c, er1
 	mov #26, r0l
@@ -187,12 +189,29 @@ proc _interrupt_entry
 	sub er0, er0
 	mov r1l, r0l                       // store interrupt number in er0
 
-	mov sp, er4                        // save stack pointer
-
 	mov #current_kernel_stack, er1
 	btst #7, @er1                      // are we in kernel mode?
 	bne 1f
+
     mov @er1, sp                       // no. change to kernel stack
+    mov @(0x1c, er4), er2              // read er0 from boot loader...
+    mov er2, @(0x00, sp)               // save it to context->uregs
+    mov @(0x18, er4), er2              // er1
+    mov er2, @(0x04, sp)
+    mov @(0x14, er4), er2              // er2
+    mov er2, @(0x08, sp)
+    mov @(0x10, er4), er2              // er3
+    mov er2, @(0x0c, sp)
+    mov @(0x08, er4), er2              // er4
+    mov er2, @(0x10, sp)
+    mov @(0x04, er4), er2              // er5
+    mov er2, @(0x14, sp)
+    mov @(0x00, er4), er2              // er6
+    mov er2, @(0x18, sp)
+    mov @(0x24, er4), er2              // pc
+    mov er2, @(0x28, sp)
+	mov er4, @(0x1c, sp)               // sp
+
 1:
 
 	mov #irq_nesting, er1
@@ -207,9 +226,14 @@ proc _interrupt_entry
 
 	jsr _splon
 	jsr _sched_yield                   // try to preempt
-	jsr _sploff
+
+	btst #7, @current_kernel_stack     // are we in kernel mode?
+	bne 1f
+	jsr _exception_deliver             // if not, try to deliver exceptions
+1:
 
 interrupt_ret:
+	jsr _sploff
 	mov er4, sp                        // restore old stack
 
 	mov #irq_nesting, er1
