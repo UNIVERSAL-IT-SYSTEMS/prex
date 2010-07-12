@@ -72,10 +72,12 @@ main(void)
 	 */
 	splash();
 
+#if !defined KERNELXIP
 	/*
 	 * Load OS modules to appropriate locations.
 	 */
 	load_os();
+#endif
 
 	/*
 	 * Dump boot infomation for debug.
