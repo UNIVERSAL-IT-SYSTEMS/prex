@@ -399,7 +399,8 @@ vm_terminate(vm_map_t map)
 		if (seg->flags != SEG_FREE) {
 			/* Free segment if it is not shared and mapped */
 			if (!(seg->flags & SEG_SHARED) &&
-			    !(seg->flags & SEG_MAPPED)) {
+			    !(seg->flags & SEG_MAPPED) &&
+			    seg->phys) {
 				page_free(seg->phys, seg->size);
 			}
 		}
@@ -464,20 +465,20 @@ vm_load(vm_map_t map, struct module *mod, void **stack)
 	 */
 	base = mod->text;
 	size = mod->textsz + mod->datasz + mod->bsssz;
-	if (size == 0)
-		return EINVAL;
+	if (size != 0)
+	{
+		start = trunc_page(base);
+		end = round_page(start + size);
+		size = (size_t)(end - start);
 
-	start = trunc_page(base);
-	end = round_page(start + size);
-	size = (size_t)(end - start);
+		if ((seg = seg_create(&map->head, start, size)) == NULL)
+			return ENOMEM;
 
-	if ((seg = seg_create(&map->head, start, size)) == NULL)
-		return ENOMEM;
+		seg->flags = SEG_READ | SEG_WRITE;
 
-	seg->flags = SEG_READ | SEG_WRITE;
-
-	if (mod->bsssz != 0)
-		memset((void *)(mod->data + mod->datasz), 0, mod->bsssz);
+		if (mod->bsssz != 0)
+			memset((void *)(mod->data + mod->datasz), 0, mod->bsssz);
+	}
 
 	/*
 	 * Create stack
